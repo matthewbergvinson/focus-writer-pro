@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus Writer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Lock Screen Overlay -->
+    <div id="lockScreen" class="lock-screen hidden">
+        <div class="lock-content">
+            <div class="lock-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+            </div>
+            <h2>Writing Session Active</h2>
+            <div class="timer-display" id="lockTimer">00:00:00</div>
+            <p class="lock-message">Keep writing until the timer ends.<br>You cannot exit until your session is complete.</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="word-count-lock">Words written: <span id="lockWordCount">0</span></p>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings-panel hidden">
+        <div class="settings-content">
+            <div class="settings-header">
+                <h2>Start Writing Session</h2>
+                <button class="close-btn" id="closeSettings">&times;</button>
+            </div>
+
+            <div class="settings-body">
+                <div class="setting-group">
+                    <label>Session Duration</label>
+                    <div class="time-inputs">
+                        <div class="time-input-group">
+                            <input type="number" id="hoursInput" min="0" max="23" value="0">
+                            <span>hours</span>
+                        </div>
+                        <div class="time-input-group">
+                            <input type="number" id="minutesInput" min="0" max="59" value="25">
+                            <span>minutes</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label>Quick Presets</label>
+                    <div class="preset-buttons">
+                        <button class="preset-btn" data-minutes="15">15 min</button>
+                        <button class="preset-btn" data-minutes="25">25 min</button>
+                        <button class="preset-btn" data-minutes="45">45 min</button>
+                        <button class="preset-btn" data-minutes="60">1 hour</button>
+                        <button class="preset-btn" data-minutes="90">1.5 hours</button>
+                        <button class="preset-btn" data-minutes="120">2 hours</button>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="strictMode" checked>
+                        <span class="checkmark"></span>
+                        Strict Mode (cannot exit until timer ends)
+                    </label>
+                </div>
+
+                <button class="start-session-btn" id="startSession">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    Start Writing Session
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Editor -->
+    <div class="editor-container">
+        <!-- Top Bar -->
+        <div class="top-bar" id="topBar">
+            <div class="top-bar-left">
+                <span class="app-title">Focus Writer</span>
+            </div>
+            <div class="top-bar-center">
+                <span class="save-status" id="saveStatus">All changes saved</span>
+            </div>
+            <div class="top-bar-right">
+                <button class="icon-btn" id="themeToggle" title="Toggle Theme">
+                    <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="timerBtn" title="Start Timed Session">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="fullscreenBtn" title="Toggle Fullscreen">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <polyline points="9 21 3 21 3 15"></polyline>
+                        <line x1="21" y1="3" x2="14" y2="10"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Writing Area -->
+        <div class="writing-area">
+            <textarea
+                id="editor"
+                placeholder="Start writing..."
+                spellcheck="true"
+                autofocus
+            ></textarea>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="bottom-bar" id="bottomBar">
+            <div class="stats">
+                <span class="stat-item">
+                    <span class="stat-label">Words:</span>
+                    <span class="stat-value" id="wordCount">0</span>
+                </span>
+                <span class="stat-item">
+                    <span class="stat-label">Characters:</span>
+                    <span class="stat-value" id="charCount">0</span>
+                </span>
+                <span class="stat-item">
+                    <span class="stat-label">Reading time:</span>
+                    <span class="stat-value" id="readingTime">0 min</span>
+                </span>
+            </div>
+            <div class="session-timer hidden" id="sessionTimer">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span id="timerDisplay">00:00:00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Emergency Exit (hidden, for strict mode escape) -->
+    <div id="emergencyExit" class="emergency-exit hidden">
+        <p>Type "EMERGENCY EXIT" to end session early:</p>
+        <input type="text" id="emergencyInput" placeholder="Type here...">
+        <button id="cancelEmergency">Cancel</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
