@@ -38,7 +38,13 @@ class FocusWriterApp {
     this.sessionTime = document.getElementById('sessionTime');
     this.saveIndicator = document.getElementById('saveIndicator');
 
-    // Completion Screen Elements
+    // Goal Banner Elements (subtle notification)
+    this.goalBanner = document.getElementById('goalBanner');
+    this.goalBannerText = document.getElementById('goalBannerText');
+    this.saveExitBannerBtn = document.getElementById('saveExitBannerBtn');
+    this.closeBanner = document.getElementById('closeBanner');
+
+    // Completion Screen Elements (keeping for backwards compat)
     this.completionStats = document.getElementById('completionStats');
     this.saveExitBtn = document.getElementById('saveExitBtn');
     this.keepWritingBtn = document.getElementById('keepWritingBtn');
@@ -62,7 +68,8 @@ class FocusWriterApp {
       currentWordCount: 0,
       timerInterval: null,
       autoSaveInterval: null,
-      elapsedSeconds: 0
+      elapsedSeconds: 0,
+      goalTriggered: false // Prevent multiple goal triggers
     };
 
     // Settings
@@ -123,9 +130,13 @@ class FocusWriterApp {
     this.editor.addEventListener('input', () => this.handleEditorInput());
     this.editor.addEventListener('keydown', (e) => this.handleEditorKeydown(e));
 
-    // Completion Actions
+    // Completion Actions (old screen - kept for backwards compat)
     this.saveExitBtn.addEventListener('click', () => this.saveAndExit());
     this.keepWritingBtn.addEventListener('click', () => this.keepWriting());
+
+    // Goal Banner Actions (new subtle notification)
+    this.saveExitBannerBtn.addEventListener('click', () => this.saveAndExit());
+    this.closeBanner.addEventListener('click', () => this.hideGoalBanner());
 
     // Emergency Exit
     this.cancelEmergency.addEventListener('click', () => this.hideEmergencyModal());
@@ -328,10 +339,11 @@ class FocusWriterApp {
     this.session.elapsedSeconds++;
     this.updateStats();
 
-    // Check time-based goal
-    if (this.session.goalType === 'time') {
+    // Check time-based goal (with guard to prevent multiple triggers)
+    if (this.session.goalType === 'time' && !this.session.goalTriggered) {
       this.updateProgress();
       if (this.session.elapsedSeconds >= this.session.goalValue * 60) {
+        this.session.goalTriggered = true;
         this.goalReached();
       }
     }
@@ -343,10 +355,11 @@ class FocusWriterApp {
     this.updateStats();
     this.updateProgress();
 
-    // Check word-based goal
-    if (this.session.goalType === 'words') {
+    // Check word-based goal (with guard to prevent multiple triggers)
+    if (this.session.goalType === 'words' && !this.session.goalTriggered) {
       const wordsWritten = this.session.currentWordCount - this.session.startWordCount;
       if (wordsWritten >= this.session.goalValue) {
+        this.session.goalTriggered = true;
         this.goalReached();
       }
     }
@@ -411,34 +424,66 @@ class FocusWriterApp {
     }
   }
 
-  goalReached() {
-    // Stop timers
-    clearInterval(this.session.timerInterval);
+  async goalReached() {
+    // Mark session as no longer locked (user is free to continue or exit)
+    this.session.active = false;
+
+    // Stop the auto-save interval (keep timer for display if they continue)
     clearInterval(this.session.autoSaveInterval);
 
     // Final save
-    this.autoSave();
+    await this.autoSave();
 
-    // Calculate stats
+    // Tell main process to exit lockdown (user is free now!)
+    try {
+      await window.focusWriter.goalReached();
+    } catch (e) {
+      console.error('Failed to release lockdown:', e);
+    }
+
+    // Calculate stats for the banner
     const wordsWritten = this.session.currentWordCount - this.session.startWordCount;
     const timeSpent = this.formatTime(this.session.elapsedSeconds);
 
+    // Update banner text
     if (this.session.goalType === 'words') {
-      this.completionStats.textContent = `You wrote ${wordsWritten.toLocaleString()} words in ${timeSpent}`;
+      this.goalBannerText.textContent = `Goal reached! ${wordsWritten.toLocaleString()} words in ${timeSpent}. You're free to go.`;
     } else {
-      this.completionStats.textContent = `You wrote ${wordsWritten.toLocaleString()} words during your ${this.session.goalValue} minute session`;
+      this.goalBannerText.textContent = `Session complete! ${wordsWritten.toLocaleString()} words written. You're free to go.`;
     }
 
-    // Show completion screen
-    this.showScreen('completion');
+    // Show the subtle banner (not a full screen takeover)
+    this.showGoalBanner();
 
-    // Play completion sound
+    // Play subtle completion sound
     this.playCompletionSound();
+
+    // Update progress bar to show 100%
+    this.progressFill.style.width = '100%';
+    this.progressText.textContent = 'Goal reached!';
+  }
+
+  showGoalBanner() {
+    this.goalBanner.classList.remove('hidden');
+    // Trigger animation by adding class after a tiny delay
+    requestAnimationFrame(() => {
+      this.goalBanner.classList.add('visible');
+    });
+  }
+
+  hideGoalBanner() {
+    this.goalBanner.classList.remove('visible');
+    setTimeout(() => {
+      this.goalBanner.classList.add('hidden');
+    }, 300);
   }
 
   async saveAndExit() {
     const content = this.editor.value;
     const wordsWritten = this.session.currentWordCount - this.session.startWordCount;
+
+    // Hide the goal banner if visible
+    this.hideGoalBanner();
 
     await window.focusWriter.endSession({
       content: content,
@@ -447,7 +492,7 @@ class FocusWriterApp {
         duration: this.formatTime(this.session.elapsedSeconds),
         goalType: this.session.goalType,
         goalValue: this.session.goalValue,
-        completed: true
+        completed: this.session.goalTriggered
       }
     });
 
@@ -489,8 +534,12 @@ class FocusWriterApp {
       currentWordCount: 0,
       timerInterval: null,
       autoSaveInterval: null,
-      elapsedSeconds: 0
+      elapsedSeconds: 0,
+      goalTriggered: false
     };
+
+    // Hide goal banner if visible
+    this.hideGoalBanner();
   }
 
   // ==================== EMERGENCY EXIT ====================

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,6 +6,7 @@ const fs = require('fs');
 let mainWindow = null;
 let isSessionActive = false;
 let sessionConfig = null;
+let lockdownInterval = null;
 
 // Paths for saving documents
 const getDocumentsPath = () => {
@@ -69,6 +70,12 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    // Clear interval to prevent memory leak
+    if (lockdownInterval) {
+      clearInterval(lockdownInterval);
+      lockdownInterval = null;
+    }
+    globalShortcut.unregisterAll();
     mainWindow = null;
   });
 }
@@ -88,6 +95,9 @@ function enterLockdown() {
   mainWindow.setClosable(false);
   mainWindow.setMinimizable(false);
 
+  // Make visible on all workspaces to prevent desktop switching
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
   // Hide dock on macOS
   if (process.platform === 'darwin') {
     app.dock.hide();
@@ -95,6 +105,45 @@ function enterLockdown() {
 
   // Disable the menu
   mainWindow.setMenuBarVisibility(false);
+
+  // Register global shortcuts to intercept common escape attempts
+  try {
+    // Block Cmd+Tab (app switcher)
+    globalShortcut.register('CommandOrControl+Tab', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.focus();
+      }
+    });
+
+    // Block Cmd+` (window switcher within app)
+    globalShortcut.register('CommandOrControl+`', () => {});
+
+    // Block Cmd+Q (quit)
+    globalShortcut.register('CommandOrControl+Q', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('show-exit-warning');
+      }
+    });
+
+    // Block Cmd+W (close window)
+    globalShortcut.register('CommandOrControl+W', () => {});
+
+    // Block Cmd+H (hide)
+    globalShortcut.register('CommandOrControl+H', () => {});
+
+    // Block Cmd+M (minimize)
+    globalShortcut.register('CommandOrControl+M', () => {});
+  } catch (e) {
+    console.log('Could not register some global shortcuts:', e.message);
+  }
+
+  // Periodically ensure focus stays on our window
+  lockdownInterval = setInterval(() => {
+    if (isSessionActive && mainWindow && !mainWindow.isFocused()) {
+      mainWindow.focus();
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+  }, 500);
 
   console.log('Lockdown mode engaged');
 }
@@ -105,12 +154,22 @@ function exitLockdown() {
 
   isSessionActive = false;
 
+  // Clear the focus enforcement interval
+  if (lockdownInterval) {
+    clearInterval(lockdownInterval);
+    lockdownInterval = null;
+  }
+
+  // Unregister all global shortcuts
+  globalShortcut.unregisterAll();
+
   // Exit kiosk mode
   mainWindow.setKiosk(false);
   mainWindow.setFullScreen(false);
   mainWindow.setAlwaysOnTop(false);
   mainWindow.setClosable(true);
   mainWindow.setMinimizable(true);
+  mainWindow.setVisibleOnAllWorkspaces(false);
 
   // Show dock on macOS
   if (process.platform === 'darwin') {
@@ -120,12 +179,49 @@ function exitLockdown() {
   console.log('Lockdown mode disengaged');
 }
 
+// Show completion / goal reached (exit lockdown, user is free to go)
+function showCompletion() {
+  if (!mainWindow) return;
+
+  isSessionActive = false;
+
+  // Clear the focus enforcement interval
+  if (lockdownInterval) {
+    clearInterval(lockdownInterval);
+    lockdownInterval = null;
+  }
+
+  // Unregister global shortcuts
+  globalShortcut.unregisterAll();
+
+  // Exit kiosk and fullscreen - user is free now
+  mainWindow.setKiosk(false);
+  mainWindow.setFullScreen(false);
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.setClosable(true);
+  mainWindow.setMinimizable(true);
+  mainWindow.setVisibleOnAllWorkspaces(false);
+
+  // Show dock on macOS
+  if (process.platform === 'darwin') {
+    app.dock.show();
+  }
+
+  console.log('Goal reached - lockdown released');
+}
+
 // IPC Handlers
 
 // Start a writing session
 ipcMain.handle('start-session', async (event, config) => {
   sessionConfig = config;
   enterLockdown();
+  return { success: true };
+});
+
+// Goal reached - show completion screen
+ipcMain.handle('goal-reached', async () => {
+  showCompletion();
   return { success: true };
 });
 

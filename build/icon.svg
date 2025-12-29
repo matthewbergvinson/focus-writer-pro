@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+
+  <!-- Pen/Quill Icon -->
+  <g transform="translate(200, 180) scale(2.4)" fill="none" stroke="white" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Pen body -->
+    <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+    <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+    <path d="M2 2l7.586 7.586"/>
+
+    <!-- Ink drop -->
+    <circle cx="11" cy="11" r="2" fill="white"/>
+  </g>
+
+  <!-- Lock icon (small, bottom right) -->
+  <g transform="translate(680, 680)" fill="none" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="20" y="70" width="140" height="100" rx="15" fill="rgba(255,255,255,0.3)"/>
+    <path d="M50 70V45a40 40 0 0 1 80 0v25" fill="none"/>
+  </g>
+</svg>

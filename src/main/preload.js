@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('focusWriter', {
   startSession: (config) => ipcRenderer.invoke('start-session', config),
   endSession: (data) => ipcRenderer.invoke('end-session', data),
   emergencyExit: (data) => ipcRenderer.invoke('emergency-exit', data),
+  goalReached: () => ipcRenderer.invoke('goal-reached'),
 
   // Content management
   saveContent: (content) => ipcRenderer.invoke('save-content', content),
