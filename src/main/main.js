@@ -215,13 +215,31 @@ function showCompletion() {
 // Start a writing session
 ipcMain.handle('start-session', async (event, config) => {
   sessionConfig = config;
-  enterLockdown();
+
+  // Only enter lockdown if strict mode is enabled
+  if (config.strictMode !== false) {
+    enterLockdown();
+  } else {
+    // Non-strict mode: just track that a session is active (for save purposes)
+    isSessionActive = true;
+    // Enter fullscreen for focus, but don't lock
+    if (mainWindow) {
+      mainWindow.setFullScreen(true);
+    }
+  }
+
   return { success: true };
 });
 
 // Goal reached - show completion screen
 ipcMain.handle('goal-reached', async () => {
-  showCompletion();
+  // Handle based on whether strict mode was enabled
+  if (sessionConfig && sessionConfig.strictMode !== false) {
+    showCompletion();
+  } else {
+    // Non-strict mode: just mark session as complete (already not locked)
+    isSessionActive = false;
+  }
   return { success: true };
 });
 
@@ -233,7 +251,16 @@ ipcMain.handle('end-session', async (event, { content, stats }) => {
     await archiveDraft(content, stats);
   }
 
-  exitLockdown();
+  // Handle exit based on whether strict mode was enabled
+  if (sessionConfig && sessionConfig.strictMode !== false) {
+    exitLockdown();
+  } else {
+    // Non-strict mode: just exit fullscreen
+    isSessionActive = false;
+    if (mainWindow) {
+      mainWindow.setFullScreen(false);
+    }
+  }
   sessionConfig = null;
 
   return { success: true };
@@ -246,7 +273,16 @@ ipcMain.handle('emergency-exit', async (event, { content }) => {
     await saveContent(content);
   }
 
-  exitLockdown();
+  // Handle exit based on whether strict mode was enabled
+  if (sessionConfig && sessionConfig.strictMode !== false) {
+    exitLockdown();
+  } else {
+    // Non-strict mode: just exit fullscreen
+    isSessionActive = false;
+    if (mainWindow) {
+      mainWindow.setFullScreen(false);
+    }
+  }
   sessionConfig = null;
 
   return { success: true };

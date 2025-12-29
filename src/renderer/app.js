@@ -69,7 +69,8 @@ class FocusWriterApp {
       timerInterval: null,
       autoSaveInterval: null,
       elapsedSeconds: 0,
-      goalTriggered: false // Prevent multiple goal triggers
+      goalTriggered: false, // Prevent multiple goal triggers
+      goalCompleted: false   // Track if goal is reached (user can exit freely)
     };
 
     // Settings
@@ -296,11 +297,35 @@ class FocusWriterApp {
   // ==================== SESSION MANAGEMENT ====================
 
   async startSession() {
-    // Get goal value
+    // Validation constants
+    const MIN_WORDS = 10;
+    const MAX_WORDS = 50000;
+    const MIN_MINUTES = 1;
+    const MAX_MINUTES = 480; // 8 hours max
+
+    // Get and validate goal value
     if (this.session.goalType === 'words') {
-      this.session.goalValue = parseInt(this.wordGoal.value) || 500;
+      const rawValue = parseInt(this.wordGoal.value);
+      if (isNaN(rawValue) || rawValue < MIN_WORDS) {
+        this.showValidationError(`Word goal must be at least ${MIN_WORDS} words`);
+        return;
+      }
+      if (rawValue > MAX_WORDS) {
+        this.showValidationError(`Word goal cannot exceed ${MAX_WORDS.toLocaleString()} words`);
+        return;
+      }
+      this.session.goalValue = rawValue;
     } else {
-      this.session.goalValue = parseInt(this.timeGoal.value) || 25;
+      const rawValue = parseInt(this.timeGoal.value);
+      if (isNaN(rawValue) || rawValue < MIN_MINUTES) {
+        this.showValidationError(`Time goal must be at least ${MIN_MINUTES} minute`);
+        return;
+      }
+      if (rawValue > MAX_MINUTES) {
+        this.showValidationError(`Time goal cannot exceed ${MAX_MINUTES} minutes (8 hours)`);
+        return;
+      }
+      this.session.goalValue = rawValue;
     }
 
     this.session.strictMode = this.strictModeToggle.checked;
@@ -336,7 +361,16 @@ class FocusWriterApp {
   }
 
   tick() {
-    this.session.elapsedSeconds++;
+    // Calculate actual elapsed time from start (handles system sleep/wake)
+    const actualElapsed = Math.floor((Date.now() - this.session.startTime) / 1000);
+
+    // Detect large jumps (sleep/wake) - more than 5 seconds gap
+    const timeDrift = actualElapsed - this.session.elapsedSeconds;
+    if (timeDrift > 5) {
+      console.log(`Detected time jump of ${timeDrift} seconds (system sleep/wake)`);
+    }
+
+    this.session.elapsedSeconds = actualElapsed;
     this.updateStats();
 
     // Check time-based goal (with guard to prevent multiple triggers)
@@ -408,25 +442,99 @@ class FocusWriterApp {
   }
 
   async autoSave() {
-    if (!this.session.active) return;
+    if (!this.session.active && !this.session.goalCompleted) return;
 
     const content = this.editor.value;
     const result = await window.focusWriter.saveContent(content);
 
     if (result.success) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       this.saveIndicator.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
-        Saved
+        Saved at ${timeStr}
+      `;
+      this.saveIndicator.classList.remove('saving', 'error');
+      this.saveIndicator.style.color = '';
+    } else {
+      // Show error state
+      this.saveIndicator.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        Save failed
       `;
       this.saveIndicator.classList.remove('saving');
+      this.saveIndicator.classList.add('error');
+      this.saveIndicator.style.color = '#ef4444';
+      this.saveIndicator.title = result.error || 'Failed to save content';
+
+      // Show persistent error banner for critical errors
+      this.showSaveError(result.error || 'Failed to save your work');
     }
+  }
+
+  showSaveError(message) {
+    // Don't show duplicate banners
+    if (document.getElementById('saveErrorBanner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'saveErrorBanner';
+    banner.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      padding: 12px 20px;
+      text-align: center;
+      z-index: 10000;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    `;
+    banner.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <span><strong>Warning:</strong> ${message}</span>
+      <button onclick="this.parentElement.remove()" style="
+        margin-left: 12px;
+        padding: 4px 12px;
+        background: rgba(255,255,255,0.2);
+        border: none;
+        border-radius: 4px;
+        color: white;
+        cursor: pointer;
+        font-size: 13px;
+      ">Dismiss</button>
+    `;
+    document.body.prepend(banner);
+
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+      if (banner.parentElement) {
+        banner.style.opacity = '0';
+        banner.style.transition = 'opacity 0.3s';
+        setTimeout(() => banner.remove(), 300);
+      }
+    }, 10000);
   }
 
   async goalReached() {
     // Mark session as no longer locked (user is free to continue or exit)
     this.session.active = false;
+    this.session.goalCompleted = true;
 
     // Stop the auto-save interval (keep timer for display if they continue)
     clearInterval(this.session.autoSaveInterval);
@@ -455,6 +563,9 @@ class FocusWriterApp {
     // Show the subtle banner (not a full screen takeover)
     this.showGoalBanner();
 
+    // Show persistent exit button in case user dismisses banner
+    this.showPersistentExitButton();
+
     // Play subtle completion sound
     this.playCompletionSound();
 
@@ -476,6 +587,60 @@ class FocusWriterApp {
     setTimeout(() => {
       this.goalBanner.classList.add('hidden');
     }, 300);
+  }
+
+  showPersistentExitButton() {
+    // Remove existing exit button if any
+    const existing = document.getElementById('persistentExitBtn');
+    if (existing) existing.remove();
+
+    // Create persistent exit button in the stats bar
+    const exitBtn = document.createElement('button');
+    exitBtn.id = 'persistentExitBtn';
+    exitBtn.className = 'persistent-exit-btn';
+    exitBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <polyline points="16 17 21 12 16 7"></polyline>
+        <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+      Save & Exit
+    `;
+    exitBtn.style.cssText = `
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-left: 16px;
+    `;
+    exitBtn.addEventListener('click', () => this.saveAndExit());
+    exitBtn.addEventListener('mouseenter', () => {
+      exitBtn.style.transform = 'scale(1.02)';
+      exitBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+    });
+    exitBtn.addEventListener('mouseleave', () => {
+      exitBtn.style.transform = 'scale(1)';
+      exitBtn.style.boxShadow = 'none';
+    });
+
+    // Add to the writing stats area
+    const statsArea = document.querySelector('.writing-stats');
+    if (statsArea) {
+      statsArea.appendChild(exitBtn);
+    }
+  }
+
+  hidePersistentExitButton() {
+    const exitBtn = document.getElementById('persistentExitBtn');
+    if (exitBtn) exitBtn.remove();
   }
 
   async saveAndExit() {
@@ -503,7 +668,17 @@ class FocusWriterApp {
   }
 
   keepWriting() {
-    // Add 10 more minutes
+    // Clear any existing timers first to prevent stacking
+    if (this.session.timerInterval) {
+      clearInterval(this.session.timerInterval);
+      this.session.timerInterval = null;
+    }
+    if (this.session.autoSaveInterval) {
+      clearInterval(this.session.autoSaveInterval);
+      this.session.autoSaveInterval = null;
+    }
+
+    // Add 10 more minutes / 20% more words
     if (this.session.goalType === 'time') {
       this.session.goalValue += 10;
     } else {
@@ -511,9 +686,21 @@ class FocusWriterApp {
       this.session.goalValue = Math.ceil(this.session.goalValue * 1.2);
     }
 
+    // Reset goal tracking so user can reach the new goal
+    this.session.goalTriggered = false;
+    this.session.goalCompleted = false;
+    this.session.active = true;
+
+    // Hide goal banner and persistent exit button
+    this.hideGoalBanner();
+    this.hidePersistentExitButton();
+
     // Restart timers
     this.session.timerInterval = setInterval(() => this.tick(), 1000);
     this.session.autoSaveInterval = setInterval(() => this.autoSave(), 10000);
+
+    // Update progress display
+    this.updateProgress();
 
     // Go back to writing
     this.showScreen('writing');
@@ -535,11 +722,15 @@ class FocusWriterApp {
       timerInterval: null,
       autoSaveInterval: null,
       elapsedSeconds: 0,
-      goalTriggered: false
+      goalTriggered: false,
+      goalCompleted: false
     };
 
     // Hide goal banner if visible
     this.hideGoalBanner();
+
+    // Hide persistent exit button
+    this.hidePersistentExitButton();
   }
 
   // ==================== EMERGENCY EXIT ====================
@@ -586,6 +777,36 @@ class FocusWriterApp {
   }
 
   // ==================== UTILITIES ====================
+
+  showValidationError(message) {
+    // Remove any existing validation toast
+    const existingToast = document.querySelector('.validation-toast');
+    if (existingToast) existingToast.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'validation-toast';
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ef4444;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      z-index: 10000;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s ease;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
 
   showScreen(screenName) {
     this.welcomeScreen.classList.remove('active');
